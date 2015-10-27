@@ -1,10 +1,36 @@
 import unittest
 from PySide.QtGui import QApplication
+from PySide.QtCore import Signal, QObject, QThread
 from testable import MainWindow
 from testable.main import GREETING
 
 
-class QtTest(unittest.TestCase):
+def wait_for(cond, to):
+    """
+    Wait for the condition function to return True until the timeout is met.
+    The timeout is broken into pieces to make sure the application can continue
+    processing without blocking functionality
+    :param cond: A function that returns a boolean
+    :param to: Timeout in seconds
+    :return: The result of the condition function
+    """
+    watchdog = 0
+    msecs = (to / 8.) * 1000
+
+    while cond() is False and watchdog < 8:
+        QThread.msleep(msecs)
+        watchdog += 1
+
+    return cond()
+
+
+class QtTest(unittest.TestCase, QObject):
+    done = Signal()
+
+    def __init__(self, *args, **kwargs):
+        super(QtTest, self).__init__(*args, **kwargs)
+        QObject.__init__(self)
+
     def setUp(self):
         """
         Initialize our QApplication
@@ -26,6 +52,7 @@ class QtTest(unittest.TestCase):
         assert self.main_window.hello_label.text() == u"{} {}".format(GREETING, 'Ryan')
 
     def testNamesList(self):
+        self.done.connect(self.main_window.name_manager_thread.quit)
         self.main_window.name_text.setText('Ryan')
         self.main_window.submit_button.click()
 
@@ -35,6 +62,7 @@ class QtTest(unittest.TestCase):
         assert self.main_window.names_list.count() == 2
         assert self.main_window.names_list.item(0).text() == 'Ryan'
         assert self.main_window.names_list.item(1).text() == 'Meg'
+        assert wait_for(lambda: len(self.main_window.name_manager.names) == 2, 2) is True
 
     def testClearList(self):
         self.main_window.name_text.setText('Ryan')
@@ -60,6 +88,8 @@ class QtTest(unittest.TestCase):
         self.main_window.submit_button.click()
 
         assert self.main_window.names_list.count() == 2
+
+        assert wait_for(lambda: len(self.main_window.name_manager.names) == 2, 2) is True
 
         self.main_window.clear_list_button.click()
         assert self.main_window.names_list.count() == 0
@@ -92,6 +122,8 @@ class QtTest(unittest.TestCase):
         self.main_window.submit_button.click()
 
         assert self.main_window.names_list.count() == 2
+
+        assert wait_for(lambda: len(self.main_window.name_manager.names) == 2, 2) is True
 
         self.main_window.clear_list_button.click()
         assert self.main_window.names_list.count() == 0
